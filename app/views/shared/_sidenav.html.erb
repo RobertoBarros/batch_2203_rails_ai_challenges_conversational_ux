@@ -1,0 +1,12 @@
+<ul class="position-sticky sticky-top nav flex-column">
+  <li class="nav-item">
+    <%= link_to "#", class: "nav-link text-dark", data: { action: "click->toggle#call" } do %>
+      <i class="fa-regular fa-square-caret-left"></i>
+    <% end %>
+  </li>
+  <% challenges.each do |challenge| %>
+    <li class="nav-item">
+      <%= link_to challenge.name, challenge_path(challenge), class: "nav-link text-dark" %>
+    </li>
+  <% end %>
+</ul>
