@@ -1,4 +1,5 @@
 class Message < ApplicationRecord
+  after_create_commit :broadcast_append_to_chat
   has_one_attached :file
 
   belongs_to :chat
@@ -22,5 +23,9 @@ class Message < ApplicationRecord
     if file.attached? && file.byte_size > MAX_FILE_SIZE_MB.megabytes
       errors.add(:file, "size must be less than #{MAX_FILE_SIZE_MB}MB")
     end
+  end
+
+  def broadcast_append_to_chat
+    broadcast_append_to chat, target: "messages", partial: "messages/message", locals: { message: self }
   end
 end

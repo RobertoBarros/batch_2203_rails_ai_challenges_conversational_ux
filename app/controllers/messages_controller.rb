@@ -4,8 +4,11 @@ class MessagesController < ApplicationController
     You are a Teaching Assistant.
     I am a student at the Le Wagon AI Software Development Bootcamp, learning how to code.
     Help me break down my problem into small, actionable steps, without giving away solutions.
+    Check teachers availability and answer with available teachers.
     Answer concisely in Markdown."
   PROMPT
+
+  BATCH_NUMBER = 2203
 
   def create
     @chat = current_user.chats.find(params[:chat_id])
@@ -17,13 +20,16 @@ class MessagesController < ApplicationController
 
     if @message.save
 
+      @assistant_message = @chat.messages.create(role: "assistant", content: "")
+
       if @message.file.attached?
-        process_file(@message.file) # send question w/ file to the appropriate model
+        process_file(@message.file)
       else
-        send_question # send question to the model
+        send_question
       end
 
-      @chat.messages.create(role: "assistant", content: @response.content)
+      @assistant_message.update(content: @response.content)
+      broadcast_replace(@assistant_message)
 
       @chat.generate_title_from_first_message
 
@@ -40,6 +46,10 @@ class MessagesController < ApplicationController
   end
 
   private
+
+  def broadcast_replace(message)
+    Turbo::StreamsChannel.broadcast_replace_to(@chat, target: helpers.dom_id(message), partial: "messages/message", locals: { message: message })
+  end
 
   def process_file(file)
     if file.content_type == "application/pdf"
@@ -59,15 +69,26 @@ class MessagesController < ApplicationController
   end
 
   def send_question(model: "gpt-4.1-nano", with: {})
+
+    available_teachers_tool = AvailableTeachersTool.new(batch_number: BATCH_NUMBER)
+
     provider = model.start_with?("gemini") ? "gemini" : "openai"
     @ruby_llm_chat = RubyLLM.chat.with_model(model, provider: provider, assume_exists: true)
     build_conversation_history
     @ruby_llm_chat.with_instructions(instructions)
-    @response = @ruby_llm_chat.ask(@message.content, with: with)
+    @ruby_llm_chat.with_tool(available_teachers_tool)
+
+    @response = @ruby_llm_chat.ask(@message.content, with: with) do |chunk|
+      next if chunk.content.blank? # skip empty chunks
+
+      @assistant_message.content += chunk.content
+      broadcast_replace(@assistant_message)
+    end
   end
 
   def build_conversation_history
     @chat.messages.each do |message|
+      next if message.content.blank?
       @ruby_llm_chat.add_message(role: message.role, content: message.content)
     end
   end

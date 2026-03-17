@@ -1,3 +1,4 @@
+<%= turbo_stream_from @chat %>
 <%= link_to "← #{@chat.challenge.name}", challenge_path(@chat.challenge) %>
 <h1 id="chat_title"><%= @chat.title %></h1>
 <div id="messages">
