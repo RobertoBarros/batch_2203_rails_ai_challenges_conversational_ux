@@ -17,11 +17,13 @@ class MessagesController < ApplicationController
 
     if @message.save
 
-      @ruby_llm_chat = RubyLLM.chat
-      build_conversation_history
+      if @message.file.attached?
+        process_file(@message.file) # send question w/ file to the appropriate model
+      else
+        send_question # send question to the model
+      end
 
-      response =  @ruby_llm_chat.with_instructions(instructions).ask(@message.content)
-      Message.create(role: "assistant", content: response.content, chat: @chat)
+      @chat.messages.create(role: "assistant", content: @response.content)
 
       @chat.generate_title_from_first_message
 
@@ -39,6 +41,31 @@ class MessagesController < ApplicationController
 
   private
 
+  def process_file(file)
+    if file.content_type == "application/pdf"
+      send_question(model: "gemini-2.5-flash", with: { pdf: @message.file.url })
+    elsif file.image?
+      send_question(model: "gpt-4o", with: { image: @message.file.url })
+    elsif file.audio?
+      temp_file = Tempfile.new(["audio", File.extname(@message.file.filename.to_s)])
+
+      URI.open(@message.file.url) do |remote_file|
+        IO.copy_stream(remote_file, temp_file)
+      end
+
+      send_question(model: "gpt-4o-audio-preview", with: { audio: temp_file.path })
+      temp_file.unlink
+    end
+  end
+
+  def send_question(model: "gpt-4.1-nano", with: {})
+    provider = model.start_with?("gemini") ? "gemini" : "openai"
+    @ruby_llm_chat = RubyLLM.chat.with_model(model, provider: provider, assume_exists: true)
+    build_conversation_history
+    @ruby_llm_chat.with_instructions(instructions)
+    @response = @ruby_llm_chat.ask(@message.content, with: with)
+  end
+
   def build_conversation_history
     @chat.messages.each do |message|
       @ruby_llm_chat.add_message(role: message.role, content: message.content)
@@ -54,6 +81,6 @@ class MessagesController < ApplicationController
   end
 
   def message_params
-    params.require(:message).permit(:content)
+    params.require(:message).permit(:content, :file)
   end
 end

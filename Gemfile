@@ -33,6 +33,8 @@ gem "solid_cable"
 
 gem "ruby_llm"
 gem "devise"
+gem "cloudinary"
+gem "image_processing"
 
 # Use Redis adapter to run Action Cable in production
 # gem "redis", ">= 4.0.1"
